@@ -11,6 +11,7 @@
 #include <string>
 
 #include "ofRectangle.h"
+#include "ofEvents.h"
 
 class ofxMacScreenRecorder {
 public:
@@ -35,6 +36,9 @@ private:
     Setting setting;
     std::string moviePath;
     void *recorder;
+    
+    inline void setContext(ofEventArgs &) { setContext(); }
+    void setContext();
 };
 
 using ofxMacScreenRecorderSetting = ofxMacScreenRecorder::Setting;

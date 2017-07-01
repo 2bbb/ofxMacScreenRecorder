@@ -4,12 +4,22 @@
 class ofApp : public ofBaseApp {
     ofxMacScreenRecorder recorder;
     ofxMacScreenRecorderSetting recorderSetting;
+    ofImage image;
 public:
     void setup() {
         if(!recorder.setup(recorderSetting)) ofExit(-1);
+        ofBackground(0);
+        image.load("image.png");
     }
     void update() {}
-    void draw() {}
+    void draw() {
+        ofSetColor(255);
+        image.draw(0, 0);
+        ofSetColor(255, 0, 0);
+        ofDrawLine(0, 0, ofGetFrameNum() % ofGetWidth(), ofGetHeight());
+        ofSetColor(0);
+        ofDrawBitmapString(ofToString(ofGetFrameNum()), 20, 20);
+    }
     
     void exit() {
         recorder.stop();

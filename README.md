@@ -1,10 +1,5 @@
 # ofxMacScreenRecorder
 
-## Notice
-
-* only MacOS
-* now, this addon can't record screen of itself.
-
 ## How to use
 
 ```cpp

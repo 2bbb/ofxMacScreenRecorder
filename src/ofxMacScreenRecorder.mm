@@ -6,10 +6,12 @@
 //
 
 #import "ofxMacScreenRecorder.h"
+#include "ofAppRunner.h"
+#include "ofEventUtils.h"
+
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
-
-#include "ofAppRunner.h"
+#import <AppKit/AppKit.h>
 
 @interface MacScreenRecorder : NSObject<
     AVCaptureFileOutputDelegate,
@@ -219,6 +221,9 @@ bool ofxMacScreenRecorder::setup(const ofxMacScreenRecorderSetting &setting) {
         NSLog(@"error at createCaptureSession: %@", err);
         return false;
     }
+//    ofAddListener(ofEvents().update, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+    ofAddListener(ofEvents().draw, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+    setContext();
     return true;
 }
 
@@ -284,4 +289,9 @@ bool ofxMacScreenRecorder::isRecordingNow() const {
     if(this->recorder == NULL) return false;
     MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
     return recorder.isRecordingNow;
+}
+
+void ofxMacScreenRecorder::setContext() {
+    NSOpenGLContext *context = (NSOpenGLContext *)ofGetNSGLContext();
+    [context makeCurrentContext];
 }
