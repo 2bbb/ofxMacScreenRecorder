@@ -8,6 +8,7 @@
 #ifndef ofxMacScreenRecorder_h
 #define ofxMacScreenRecorder_h
 
+#include <functional>
 #include <string>
 
 #include "ofRectangle.h"
@@ -15,6 +16,20 @@
 
 class ofxMacScreenRecorder {
 public:
+    ofEvent<std::string> didOccurRuntimeError;
+    ofEvent<std::string> didFailedWriting;
+    ofEvent<std::string> didFinishWriting;
+    
+    std::function<void(const std::string &)> runtimeErrorCallback{[](const std::string &){}};
+    std::function<void(const std::string &)> finishWritingCallback{[](const std::string &){}};;
+    std::function<void(const std::string &)> failureWritingCallback{[](const std::string &){}};;
+    
+    ~ofxMacScreenRecorder() {
+        ofRemoveListener(ofEvents().draw, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+        ofRemoveListener(didOccurRuntimeError, this, &ofxMacScreenRecorder::runtimeError);
+        ofRemoveListener(didFailedWriting, this, &ofxMacScreenRecorder::failureWriting);
+        ofRemoveListener(didFinishWriting, this, &ofxMacScreenRecorder::finishWriting);
+    }
     struct Setting {
         Setting() {};
         ofRectangle recordingArea{0, 0, -1, -1};
@@ -32,13 +47,33 @@ public:
     
     inline Setting &getSetting() { return setting; }
     
+    void registerRuntimeErrorCallback(std::function<void(const std::string &)> callback) {
+        runtimeErrorCallback = callback;
+    }
+    void registerFinishWritingCallback(std::function<void(const std::string &)> callback) {
+        finishWritingCallback = callback;
+    }
+    void registerFailureWritingCallback(std::function<void(const std::string &)> callback) {
+        failureWritingCallback = callback;
+    }
+    
+    void setContext();
+    
 private:
     Setting setting;
     std::string moviePath;
     void *recorder;
     
     inline void setContext(ofEventArgs &) { setContext(); }
-    void setContext();
+    void runtimeError(std::string &errorString) {
+        runtimeErrorCallback(errorString);
+    }
+    void failureWriting(std::string &errorString) {
+        failureWritingCallback(errorString);
+    }
+    void finishWriting(std::string &path) {
+        finishWritingCallback(path);
+    }
 };
 
 using ofxMacScreenRecorderSetting = ofxMacScreenRecorder::Setting;

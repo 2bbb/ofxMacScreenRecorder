@@ -10,6 +10,9 @@ public:
         if(!recorder.setup(recorderSetting)) ofExit(-1);
         ofBackground(0);
         image.load("image.png");
+        recorder.registerFinishWritingCallback([](const std::string &path) {
+            ofLogNotice() << "success recording. save to: " << path;
+        });
     }
     void update() {}
     void draw() {

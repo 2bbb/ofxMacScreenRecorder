@@ -23,7 +23,7 @@
     
     CGDirectDisplayID display;
     AVCaptureMovieFileOutput *captureMovieFileOutput;
-    
+    ofxMacScreenRecorder *parent;
     BOOL isRecordingNow;
 }
 
@@ -32,6 +32,7 @@
 - (void)start:(NSString *)moviePath;
 - (void)stop;
 - (BOOL)isRecordingNow;
+- (void)setParent:(ofxMacScreenRecorder *)parent;
 
 @end
 
@@ -105,9 +106,8 @@
                              frameRate:(float)frameRate
                                  scale:(float)scale
 {
-    NSLog(@"addDisplayInputToCaptureSession %f, %f, %f, %f", cropRect.origin.x, cropRect.origin.y, cropRect.size.width, cropRect.size.height);
     [captureSession beginConfiguration];
-    if (newDisplay != display) {
+    if(newDisplay != display) {
         [captureSession removeInput:captureScreenInput];
         AVCaptureScreenInput *newScreenInput = [[AVCaptureScreenInput alloc] initWithDisplayID:newDisplay];
         
@@ -120,7 +120,6 @@
     [captureScreenInput setCropRect:cropRect];
     [captureScreenInput setScaleFactor:scale];
     [self setMaximumScreenInputFramerate:frameRate];
-    NSLog(@"%f, %f", captureScreenInput.cropRect.origin.x, captureScreenInput.cropRect.origin.y);
     [captureSession commitConfiguration];
 }
 
@@ -133,18 +132,18 @@
 
 - (void)start:(NSString *)moviePath {
     isRecordingNow = YES;
-    NSLog(@"Minimum Frame Duration: %f, Crop Rect: %@, Scale Factor: %f, Capture Mouse Clicks: %@, Capture Mouse Cursor: %@, Remove Duplicate Frames: %@",
-          CMTimeGetSeconds([captureScreenInput minFrameDuration]),
-          NSStringFromRect(NSRectFromCGRect([captureScreenInput cropRect])),
-          [captureScreenInput scaleFactor],
-          [captureScreenInput capturesMouseClicks] ? @"Yes" : @"No",
-          [captureScreenInput capturesCursor] ? @"Yes" : @"No",
-          [captureScreenInput removesDuplicateFrames] ? @"Yes" : @"No");
+//    NSLog(@"Minimum Frame Duration: %f, Crop Rect: %@, Scale Factor: %f, Capture Mouse Clicks: %@, Capture Mouse Cursor: %@, Remove Duplicate Frames: %@",
+//          CMTimeGetSeconds([captureScreenInput minFrameDuration]),
+//          NSStringFromRect(NSRectFromCGRect([captureScreenInput cropRect])),
+//          [captureScreenInput scaleFactor],
+//          [captureScreenInput capturesMouseClicks] ? @"Yes" : @"No",
+//          [captureScreenInput capturesCursor] ? @"Yes" : @"No",
+//          [captureScreenInput removesDuplicateFrames] ? @"Yes" : @"No");
     
     /* Create a recording file */
     char *screenRecordingFileName = strdup([[moviePath stringByStandardizingPath] fileSystemRepresentation]);
-    if (screenRecordingFileName) {
-        NSLog(@"%s", screenRecordingFileName);
+    if(screenRecordingFileName) {
+//        NSLog(@"%s", screenRecordingFileName);
         int fileDescriptor = mkstemp(screenRecordingFileName);
         if(fileDescriptor != -1) {
             NSString *filenameStr = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:screenRecordingFileName length:strlen(screenRecordingFileName)];
@@ -174,31 +173,29 @@
 {
     isRecordingNow = NO;
     if(error) {
-        NSLog(@"%s %@", __func__, error);
+        std::string error_str = error.description.UTF8String;
+        ofLogError("ofxMacScreenRecorder::finishRecording") << error_str;
+        ofNotifyEvent(parent->didFailedWriting, error_str, parent);
         return;
     }
-    NSLog(@"success to write at %@", outputFileURL);
+    std::string url_str = outputFileURL.absoluteString.UTF8String;
+    ofNotifyEvent(parent->didFinishWriting, url_str, parent);
 }
 
 - (void)captureSessionRuntimeErrorDidOccur:(NSNotification *)notification {
     NSError *error = [notification userInfo][AVCaptureSessionErrorKey];
-    //    NSAlert *alert = [[NSAlert alloc] init];
-    //    [alert setAlertStyle:NSCriticalAlertStyle];
-    //    [alert setMessageText:[error localizedDescription]];
-    //    NSString *informativeText = [error localizedRecoverySuggestion];
-    //    informativeText = informativeText ? informativeText : [error localizedFailureReason]; // No recovery suggestion, then at least tell the user why it failed.
-    //    [alert setInformativeText:informativeText];
-    //
-    //    [alert beginSheetModalForWindow:[self windowForSheet]
-    //                      modalDelegate:self
-    //                     didEndSelector:@selector(alertDidEnd:returnCode:contextInfo:)
-    //                        contextInfo:NULL];
-    NSLog(@"%s %@", __func__, error);
+    std::string error_str = error.description.UTF8String;
+    ofLogError("ofxMacScreenRecorder::runtimeErrorDidOccur") << error_str;
+    ofNotifyEvent(parent->didOccurRuntimeError, error_str, parent);
     isRecordingNow = NO;
 }
 
 - (BOOL)isRecordingNow {
     return isRecordingNow;
+}
+
+- (void)setParent:(ofxMacScreenRecorder *)parent_ {
+    parent = parent_;
 }
 
 @end
@@ -214,15 +211,17 @@ bool ofxMacScreenRecorder::setup(const ofxMacScreenRecorderSetting &setting) {
         if(setSetting(setting)) {
             this->recorder = rec;
         } else {
-            NSLog(@"error at setSetting");
             return false;
         }
     } else {
-        NSLog(@"error at createCaptureSession: %@", err);
+        ofLogError("ofxMacScreenRecorder::setup") << "error at createCaptureSession: " << err.description.UTF8String;
         return false;
     }
-//    ofAddListener(ofEvents().update, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+    
     ofAddListener(ofEvents().draw, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+    ofAddListener(didOccurRuntimeError, this, &ofxMacScreenRecorder::runtimeError);
+    ofAddListener(didFailedWriting, this, &ofxMacScreenRecorder::failureWriting);
+    ofAddListener(didFinishWriting, this, &ofxMacScreenRecorder::finishWriting);
     setContext();
     return true;
 }
@@ -230,7 +229,7 @@ bool ofxMacScreenRecorder::setup(const ofxMacScreenRecorderSetting &setting) {
 bool ofxMacScreenRecorder::setSetting(const ofxMacScreenRecorderSetting &setting) {
     this->setting = setting;
     MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
-    NSLog(@"%@", recorder);
+    [recorder setParent:this];
     ofRectangle rect = setting.recordingArea;
     [recorder setCapturesCursor:setting.willRecordCursor];
     if(setting.willRecordAppWindow) {
@@ -238,20 +237,18 @@ bool ofxMacScreenRecorder::setSetting(const ofxMacScreenRecorderSetting &setting
         rect.x = ofGetWindowPositionX();
         rect.y = ofGetWindowPositionY();
     }
-    NSLog(@"setSetting: %f, %f, %f, %f", rect.x, rect.y, rect.width, rect.height);
     CGRect rect_ = CGRectMake(rect.x, rect.y, rect.width, rect.height);
     CGDirectDisplayID displays[16];
     uint32_t matchingDisplayCount = 0;
     CGError err = CGGetDisplaysWithRect(rect_, 16, displays, &matchingDisplayCount);
     if(err != kCGErrorSuccess) {
-        NSLog(@"can't get displays with rect");
+        ofLogError("ofxMacScreenRecorder::setSetting") << "can't get displays with rect";
         return false;
     }
     if(matchingDisplayCount != 1) {
-        NSLog(@"%d", matchingDisplayCount);
+        ofLogError("ofxMacScreenRecorder::setSetting") << "display area crossing multiple displays";
         return false;
     }
-    NSLog(@"matchingDisplayCount = %d", matchingDisplayCount);
     CGRect bound = CGDisplayBounds(displays[0]);
     CGDisplayModeRef modeRef = CGDisplayCopyDisplayMode(displays[0]);
     float w = CGDisplayModeGetPixelWidth(modeRef);
@@ -271,17 +268,16 @@ void ofxMacScreenRecorder::start(const std::string &moviePath) {
     if(recorder && ![recorder isRecordingNow]) {
         [recorder start:[NSString stringWithUTF8String:moviePath.c_str()]];
     } else {
-        NSLog(@"warning: already started recording");
+        ofLogWarning("ofxMacScreenRecorder::start") << "already started recording";
     }
 }
 
 void ofxMacScreenRecorder::stop() {
     MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
     if(recorder && [recorder isRecordingNow]) {
-        NSLog(@"stop recording");
         [recorder stop];
     } else {
-        NSLog(@"isn't recorindg now");
+        ofLogWarning("ofxMacScreenRecorder::stop") << "isn't recording now";
     }
 }
 
