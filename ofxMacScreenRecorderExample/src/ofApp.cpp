@@ -7,17 +7,25 @@ class ofApp : public ofBaseApp {
     ofImage image;
 public:
     void setup() {
+        recorderSetting.codecType = ofxMacScreenRecorder::CodecType::ProRes4444;
         if(!recorder.setup(recorderSetting)) ofExit(-1);
-        ofBackground(0);
+        
         image.load("image.png");
-        recorder.registerFinishWritingCallback([](const std::string &path) {
+        recorder.registerFinishWritingCallback([this](const std::string &path) {
             ofLogNotice() << "success recording. save to: " << path;
         });
+        recorder.registerStartWritingCallback([this] {
+            
+        });
+        
+        ofBackground(0);
     }
     void update() {}
     void draw() {
         ofSetColor(255);
-        image.draw(0, 0);
+        if(recorder.getStatus() != ofxMacScreenRecorder::Status::Recording || ofGetFrameNum() % 2) {
+            image.draw(0, 0);
+        }
         ofSetColor(255, 0, 0);
         ofDrawLine(0, 0, ofGetFrameNum() % ofGetWidth(), ofGetHeight());
         ofSetColor(0);
