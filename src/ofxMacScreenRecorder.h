@@ -16,14 +16,34 @@
 
 class ofxMacScreenRecorder {
 public:
+    enum class CodecType : std::uint8_t {
+        H264,
+        JPEG,
+        ProRes422,
+        ProRes4444,
+//        HEVC
+    };
+    enum class Status : std::uint8_t {
+        NotRecording,
+        Preparing,
+        Recording,
+        Pause,
+    };
     ofEvent<std::string> didOccurRuntimeError;
     ofEvent<std::string> didFailedWriting;
+    ofEvent<void> didStartWriting;
+    ofEvent<void> didPauseWriting;
+    ofEvent<void> didResumeWriting;
+    ofEvent<void> willFinishWriting;
     ofEvent<std::string> didFinishWriting;
     
     std::function<void(const std::string &)> runtimeErrorCallback{[](const std::string &){}};
     std::function<void(const std::string &)> finishWritingCallback{[](const std::string &){}};;
     std::function<void(const std::string &)> failureWritingCallback{[](const std::string &){}};;
-    
+    std::function<void()> didStartCallback{[]{}};
+    std::function<void()> didPauseCallback{[]{}};
+    std::function<void()> didResumeCallback{[]{}};
+
     ~ofxMacScreenRecorder() {
         ofRemoveListener(ofEvents().draw, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
         ofRemoveListener(didOccurRuntimeError, this, &ofxMacScreenRecorder::runtimeError);
@@ -37,30 +57,31 @@ public:
         bool willRecordAppWindow{true};
         float frameRate{60.0f};
         float scale{0.0f};
+        CodecType codecType{CodecType::H264};
     };
     
     bool setup(const Setting &setting = Setting());
     bool setSetting(const Setting &setting = Setting());
-    void start(const std::string &moviePath);
+    bool start(const std::string &moviePath, bool overwrite = true);
     void stop();
     bool isRecordingNow() const;
+    Status getStatus() const;
     
     inline Setting &getSetting() { return setting; }
     
-    void registerRuntimeErrorCallback(std::function<void(const std::string &)> callback) {
-        runtimeErrorCallback = callback;
-    }
-    void registerFinishWritingCallback(std::function<void(const std::string &)> callback) {
-        finishWritingCallback = callback;
-    }
-    void registerFailureWritingCallback(std::function<void(const std::string &)> callback) {
-        failureWritingCallback = callback;
-    }
+    inline void registerRuntimeErrorCallback(std::function<void(const std::string &)> callback)
+    { runtimeErrorCallback = callback; };
+    inline void registerStartWritingCallback(std::function<void()> callback)
+    { didStartCallback = callback; };
+    inline void registerFinishWritingCallback(std::function<void(const std::string &)> callback)
+    { finishWritingCallback = callback; };
+    inline void registerFailureWritingCallback(std::function<void(const std::string &)> callback)
+    { failureWritingCallback = callback; };
     
     void setContext();
     
-private:
     Setting setting;
+private:
     std::string moviePath;
     void *recorder;
     

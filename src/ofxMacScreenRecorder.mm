@@ -25,13 +25,15 @@
     AVCaptureMovieFileOutput *captureMovieFileOutput;
     ofxMacScreenRecorder *parent;
     BOOL isRecordingNow;
+    ofxMacScreenRecorder::Status status;
 }
 
 - (instancetype)init;
 - (BOOL)createCaptureSession:(NSError **)err;
-- (void)start:(NSString *)moviePath;
+- (BOOL)start:(NSString *)moviePath overwrite:(BOOL)overwrite;
 - (void)stop;
 - (BOOL)isRecordingNow;
+- (ofxMacScreenRecorder::Status)status;
 - (void)setParent:(ofxMacScreenRecorder *)parent;
 
 @end
@@ -58,7 +60,7 @@
     if([captureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
         [captureSession setSessionPreset:AVCaptureSessionPresetHigh];
     }
-    
+
     display = CGMainDisplayID();
     
     captureScreenInput = [[AVCaptureScreenInput alloc] initWithDisplayID:display];
@@ -70,6 +72,7 @@
     
     captureMovieFileOutput = [[AVCaptureMovieFileOutput alloc] init];
     [captureMovieFileOutput setDelegate:self];
+    
     if([captureSession canAddOutput:captureMovieFileOutput]) {
         [captureSession addOutput:captureMovieFileOutput];
     } else {
@@ -123,6 +126,19 @@
     [captureSession commitConfiguration];
 }
 
+- (void)setCaptureSessionPreset:(int)preset {
+    [captureSession beginConfiguration];
+    if(![captureSession.sessionPreset isEqualToString:AVCaptureSessionPresetHigh]) {
+        if([captureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
+            [captureSession setSessionPreset:AVCaptureSessionPresetHigh];
+        }
+    }
+    if([captureSession canSetSessionPreset:AVCaptureSessionPresetPhoto]) {
+        [captureSession setSessionPreset:AVCaptureSessionPresetPhoto];
+    }
+    [captureSession commitConfiguration];
+}
+
 - (BOOL)captureOutputShouldProvideSampleAccurateRecordingStart:(AVCaptureOutput *)captureOutput {
     // We don't require frame accurate start when we start a recording. If we answer YES, the capture output
     // applies outputSettings immediately when the session starts previewing, resulting in higher CPU usage
@@ -130,8 +146,9 @@
     return NO;
 }
 
-- (void)start:(NSString *)moviePath {
+- (BOOL)start:(NSString *)moviePath overwrite:(BOOL)overwrite {
     isRecordingNow = YES;
+    status = ofxMacScreenRecorder::Status::Preparing;
 //    NSLog(@"Minimum Frame Duration: %f, Crop Rect: %@, Scale Factor: %f, Capture Mouse Clicks: %@, Capture Mouse Cursor: %@, Remove Duplicate Frames: %@",
 //          CMTimeGetSeconds([captureScreenInput minFrameDuration]),
 //          NSStringFromRect(NSRectFromCGRect([captureScreenInput cropRect])),
@@ -141,29 +158,95 @@
 //          [captureScreenInput removesDuplicateFrames] ? @"Yes" : @"No");
     
     /* Create a recording file */
-    char *screenRecordingFileName = strdup([[moviePath stringByStandardizingPath] fileSystemRepresentation]);
-    if(screenRecordingFileName) {
-//        NSLog(@"%s", screenRecordingFileName);
-        int fileDescriptor = mkstemp(screenRecordingFileName);
-        if(fileDescriptor != -1) {
-            NSString *filenameStr = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:screenRecordingFileName length:strlen(screenRecordingFileName)];
-            NSURL *url = [NSURL fileURLWithPath:[filenameStr stringByAppendingPathExtension:@"mov"]];
-            [captureMovieFileOutput startRecordingToOutputFileURL:url
-                                                recordingDelegate:self];
+    NSMutableDictionary *setting = @{}.mutableCopy;
+    switch(parent->setting.codecType) {
+        case ofxMacScreenRecorder::CodecType::H264:
+            [setting setObject:AVVideoCodecH264
+                        forKey:AVVideoCodecKey];
+            break;
+        case ofxMacScreenRecorder::CodecType::JPEG:
+            [setting setObject:AVVideoCodecJPEG
+                        forKey:AVVideoCodecKey];
+            break;
+        case ofxMacScreenRecorder::CodecType::ProRes422:
+            [setting setObject:AVVideoCodecAppleProRes422
+                        forKey:AVVideoCodecKey];
+            break;
+        case ofxMacScreenRecorder::CodecType::ProRes4444:
+            [setting setObject:AVVideoCodecAppleProRes4444
+                        forKey:AVVideoCodecKey];
+            break;
+//        case ofxMacScreenRecorder::CodecType::HEVC:
+//            [setting setObject:AVVideoCodecHEVC
+//                        forKey:AVVideoCodecKey];
+//            break;
+    }
+    [captureMovieFileOutput setOutputSettings:setting
+                                forConnection:captureMovieFileOutput.connections.firstObject];
+    
+    if(overwrite) {
+        NSString *path = [moviePath stringByAppendingString:@".mov"];
+        std::ifstream ifs(path.UTF8String);
+        if(ifs.is_open()) {
+            ofLogNotice() << "remove file " << path.UTF8String;
+            std::remove(path.UTF8String);
         }
-        
+    }
+    
+    
+    char *screenRecordingFileName = strdup(moviePath.stringByStandardizingPath.fileSystemRepresentation);
+    if(screenRecordingFileName) {
+        NSString *filenameStr = [NSFileManager.defaultManager stringWithFileSystemRepresentation:screenRecordingFileName length:strlen(screenRecordingFileName)];
+        NSURL *url = [NSURL fileURLWithPath:[filenameStr stringByAppendingPathExtension:@"mov"]];
+        [captureMovieFileOutput startRecordingToOutputFileURL:url
+                                            recordingDelegate:self];
         remove(screenRecordingFileName);
         free(screenRecordingFileName);
         return true;
     }
     
+    status = ofxMacScreenRecorder::Status::NotRecording;
     isRecordingNow = NO;
     return false;
 }
 
 - (void)stop {
     isRecordingNow = NO;
+    status = ofxMacScreenRecorder::Status::NotRecording;
     [captureMovieFileOutput stopRecording];
+}
+
+- (void)              captureOutput:(AVCaptureFileOutput *)output
+ didStartRecordingToOutputFileAtURL:(NSURL *)fileURL
+                    fromConnections:(NSArray<AVCaptureConnection *> *)connections
+{
+    ofLogNotice() << "started";
+    status = ofxMacScreenRecorder::Status::Recording;
+    ofNotifyEvent(parent->didStartWriting, parent);
+}
+
+- (void)              captureOutput:(AVCaptureFileOutput *)output
+ didPauseRecordingToOutputFileAtURL:(NSURL *)fileURL
+                    fromConnections:(NSArray<AVCaptureConnection *> *)connections
+{
+    status = ofxMacScreenRecorder::Status::Pause;
+    ofNotifyEvent(parent->didPauseWriting, parent);
+}
+
+- (void)               captureOutput:(AVCaptureFileOutput *)output
+ didResumeRecordingToOutputFileAtURL:(NSURL *)fileURL
+                     fromConnections:(NSArray<AVCaptureConnection *> *)connections
+{
+    status = ofxMacScreenRecorder::Status::Recording;
+    ofNotifyEvent(parent->didResumeWriting, parent);
+}
+
+- (void)                captureOutput:(AVCaptureFileOutput *)output
+ willFinishRecordingToOutputFileAtURL:(NSURL *)fileURL
+                      fromConnections:(NSArray<AVCaptureConnection *> *)connections
+                                error:(nullable NSError *)error
+{
+    ofNotifyEvent(parent->willFinishWriting, parent);
 }
 
 - (void)               captureOutput:(AVCaptureFileOutput *)captureOutput
@@ -171,6 +254,7 @@
                      fromConnections:(NSArray *)connections
                                error:(NSError *)error
 {
+    status = ofxMacScreenRecorder::Status::NotRecording;
     isRecordingNow = NO;
     if(error) {
         std::string error_str = error.description.UTF8String;
@@ -183,7 +267,7 @@
 }
 
 - (void)captureSessionRuntimeErrorDidOccur:(NSNotification *)notification {
-    NSError *error = [notification userInfo][AVCaptureSessionErrorKey];
+    NSError *error = notification.userInfo[AVCaptureSessionErrorKey];
     std::string error_str = error.description.UTF8String;
     ofLogError("ofxMacScreenRecorder::runtimeErrorDidOccur") << error_str;
     ofNotifyEvent(parent->didOccurRuntimeError, error_str, parent);
@@ -192,6 +276,10 @@
 
 - (BOOL)isRecordingNow {
     return isRecordingNow;
+}
+
+- (ofxMacScreenRecorder::Status)status {
+    return status;
 }
 
 - (void)setParent:(ofxMacScreenRecorder *)parent_ {
@@ -263,18 +351,20 @@ bool ofxMacScreenRecorder::setSetting(const ofxMacScreenRecorderSetting &setting
     return true;
 }
 
-void ofxMacScreenRecorder::start(const std::string &moviePath) {
+bool ofxMacScreenRecorder::start(const std::string &moviePath, bool overwrite) {
     MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
     if(recorder && ![recorder isRecordingNow]) {
-        [recorder start:[NSString stringWithUTF8String:moviePath.c_str()]];
+        return [recorder start:[NSString stringWithUTF8String:moviePath.c_str()]
+                     overwrite:overwrite ? YES : NO];
     } else {
         ofLogWarning("ofxMacScreenRecorder::start") << "already started recording";
+        return false;
     }
 }
 
 void ofxMacScreenRecorder::stop() {
     MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
-    if(recorder && [recorder isRecordingNow]) {
+    if(recorder && recorder.isRecordingNow) {
         [recorder stop];
     } else {
         ofLogWarning("ofxMacScreenRecorder::stop") << "isn't recording now";
@@ -285,6 +375,12 @@ bool ofxMacScreenRecorder::isRecordingNow() const {
     if(this->recorder == NULL) return false;
     MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
     return recorder.isRecordingNow;
+}
+
+ofxMacScreenRecorder::Status ofxMacScreenRecorder::getStatus() const {
+    if(this->recorder == NULL) return ofxMacScreenRecorder::Status::NotRecording;
+    MacScreenRecorder *recorder = (MacScreenRecorder *)this->recorder;
+    return recorder.status;
 }
 
 void ofxMacScreenRecorder::setContext() {
