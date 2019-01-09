@@ -176,10 +176,12 @@
             [setting setObject:AVVideoCodecAppleProRes4444
                         forKey:AVVideoCodecKey];
             break;
-//        case ofxMacScreenRecorder::CodecType::HEVC:
-//            [setting setObject:AVVideoCodecHEVC
-//                        forKey:AVVideoCodecKey];
-//            break;
+#ifdef BBB_IS_MACOS_13
+        case ofxMacScreenRecorder::CodecType::HEVC:
+            [setting setObject:AVVideoCodecHEVC
+                        forKey:AVVideoCodecKey];
+            break;
+#endif
     }
     [captureMovieFileOutput setOutputSettings:setting
                                 forConnection:captureMovieFileOutput.connections.firstObject];

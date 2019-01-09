@@ -8,11 +8,19 @@
 #ifndef ofxMacScreenRecorder_h
 #define ofxMacScreenRecorder_h
 
+#include <AvailabilityMacros.h>
+
 #include <functional>
 #include <string>
 
 #include "ofRectangle.h"
 #include "ofEvents.h"
+
+#ifdef MAC_OS_X_VERSION_10_13
+#   if MAC_OS_X_VERSION_10_13 <= MAC_OS_X_VERSION_MIN_REQUIRED
+#       define BBB_IS_MACOS_13 1
+#   endif
+#endif
 
 class ofxMacScreenRecorder {
 public:
@@ -21,7 +29,9 @@ public:
         JPEG,
         ProRes422,
         ProRes4444,
-//        HEVC
+#ifdef BBB_IS_MACOS_13
+        HEVC
+#endif
     };
     enum class Status : std::uint8_t {
         NotRecording,
