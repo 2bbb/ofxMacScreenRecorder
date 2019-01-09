@@ -15,7 +15,7 @@ public:
             ofLogNotice() << "success recording. save to: " << path;
         });
         recorder.registerStartWritingCallback([this] {
-            
+            ofLogNotice() << "start" << std::endl;
         });
         
         ofBackground(0);

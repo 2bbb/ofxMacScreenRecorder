@@ -56,6 +56,7 @@ public:
 
     ~ofxMacScreenRecorder() {
         ofRemoveListener(ofEvents().draw, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+        ofRemoveListener(didStartWriting, this, &ofxMacScreenRecorder::startWriting);
         ofRemoveListener(didOccurRuntimeError, this, &ofxMacScreenRecorder::runtimeError);
         ofRemoveListener(didFailedWriting, this, &ofxMacScreenRecorder::failureWriting);
         ofRemoveListener(didFinishWriting, this, &ofxMacScreenRecorder::finishWriting);
@@ -96,15 +97,14 @@ private:
     void *recorder;
     
     inline void setContext(ofEventArgs &) { setContext(); }
-    void runtimeError(std::string &errorString) {
-        runtimeErrorCallback(errorString);
-    }
-    void failureWriting(std::string &errorString) {
-        failureWritingCallback(errorString);
-    }
-    void finishWriting(std::string &path) {
-        finishWritingCallback(path);
-    }
+    inline void startWriting()
+    { didStartCallback(); };
+    inline void runtimeError(std::string &errorString)
+    { runtimeErrorCallback(errorString); };
+    inline void failureWriting(std::string &errorString)
+    { failureWritingCallback(errorString); };
+    inline void finishWriting(std::string &path)
+    { finishWritingCallback(path); };
 };
 
 using ofxMacScreenRecorderSetting = ofxMacScreenRecorder::Setting;

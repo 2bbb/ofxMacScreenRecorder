@@ -313,6 +313,7 @@ bool ofxMacScreenRecorder::setup(const ofxMacScreenRecorderSetting &setting) {
     }
     
     ofAddListener(ofEvents().draw, this, &ofxMacScreenRecorder::setContext, OF_EVENT_ORDER_BEFORE_APP);
+    ofAddListener(didStartWriting, this, &ofxMacScreenRecorder::startWriting);
     ofAddListener(didOccurRuntimeError, this, &ofxMacScreenRecorder::runtimeError);
     ofAddListener(didFailedWriting, this, &ofxMacScreenRecorder::failureWriting);
     ofAddListener(didFinishWriting, this, &ofxMacScreenRecorder::finishWriting);
