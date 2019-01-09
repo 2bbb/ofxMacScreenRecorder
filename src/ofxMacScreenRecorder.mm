@@ -5,9 +5,13 @@
 //
 //
 
+#include <iostream>
+#include <fstream>
+
 #import "ofxMacScreenRecorder.h"
 #include "ofAppRunner.h"
 #include "ofEventUtils.h"
+#include "ofLog.h"
 
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
